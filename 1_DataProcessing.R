@@ -1860,9 +1860,6 @@ for(i in 1:10){
 
 saveRDS(summC, file.path(ElasticNet_results.dir, "summC_RCHOP_Train.RDS"))
 
-aic.summ <- rbind(aic.summ1, aic.summ2, aic.summ3, aic.summ4,
-                  aic.Check1, aic.Check2)
-saveRDS(aic.summ, file.path(ElasticNet_results.dir,("RCHOP_AIC_Deltas.RDS"))
         
         #### Elastic net par GCHOP ####
         
@@ -2658,31 +2655,45 @@ saveRDS(aic.summ, file.path(ElasticNet_results.dir,("RCHOP_AIC_Deltas.RDS"))
         #[1] 7
         
         saveRDS(CheckFinalEdges2, file.path(ElasticNet_results.dir, "GCHOP_SelectedEdges.RDS"))
+
+for(i in 1:10){
+  
+  print(i)
+  
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges2,]
+  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+  
+  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+  
+  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+  
+  CoxSurvCI <- CoxSurvCI %>% 
+    inner_join(CI.RCHOP %>% 
+                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+  
+  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+  
+  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+  
+  print(concordance(Cox.PFS.1)$concordance)
+  print(concordance(Cox.OS.1)$concordance)
+  
+  if(i == 1){
+    summC <- data.frame(C.PFS = concordance(Cox.PFS.1)$concordance,
+                        C.OS = concordance(Cox.OS.1)$concordance, 
+                        RP = i)
+  } else {
+    summC[nrow(summC) + 1, ] <- c(concordance(Cox.PFS.1)$concordance,
+                                  concordance(Cox.OS.1)$concordance, 
+                                  i)
+  }
+  
+  
+}
+
+saveRDS(summC, file.path(ElasticNet_results.dir, "summC_GCHOP_Train.RDS"))
+                                                     
         
-        
-        for(i in 1:10){
-          
-          print(i)
-          
-          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges2,]
-          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-          
-          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-          
-          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-          
-          CoxSurvCI <- CoxSurvCI %>% 
-            inner_join(CI.GCHOP %>% 
-                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-          
-          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-          
-          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-          
-          print(concordance(Cox.PFS.1)$concordance)
-          print(concordance(Cox.OS.1)$concordance)
-          
-        }
