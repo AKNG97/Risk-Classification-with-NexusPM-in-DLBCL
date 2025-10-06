@@ -1,10 +1,17 @@
-setwd("/STORAGE/csbig/anakamura/DLBCL_A4/A17")
 
-Raw.dir <- "/STORAGE/csbig/anakamura/DLBCL_A4/A17/RawData/"
+home.dir <- file.path(path.expand("~"), "NexusPM")
+dir.create(home.dir)
+setwd(home.dir)
+
+Raw.dir <- file.path(home.dir, "RawData/")
 dir.create(Raw.dir)
+#NOTE: Download Human.GRCh38.p13.annot.tsv into the Raw.dir folder 
 
-ClinicalInfo <- "/STORAGE/csbig/anakamura/DLBCL_A4/A17/ClinicalInfo/"
+ClinicalInfo <- file.path(home.dir, "ClinicalInfo/")
 dir.create(ClinicalInfo)
+#NOTE: Download the files DLBCL_NCII_clinical_paper.csv and Goya_Clinical_Data.csv 
+# and save into the ClinicalInfo folder before running this script
+
 #### Libraries ####
 library(SummarizedExperiment)
 library(TCGAbiolinks)
@@ -52,8 +59,6 @@ saveRDS(annot, file.path(Raw.dir, "annot_161224.RDS"))
 
 #### Download NCICC files ####
 
-setwd("/STORAGE/csbig/anakamura/DLBCL_A4")
-
 qry.rna_NCICC <- GDCquery(project = "NCICCR-DLBCL",
                           data.category= "Transcriptome Profiling",
                           data.type = "Gene Expression Quantification",
@@ -66,7 +71,8 @@ saveRDS(DLBCL.NICC, file.path(Raw.dir, "DLBCL_NCICCR_Raw.RDS"))
 CI.NCII <- as.data.frame(colData(DLBCL.NICC))
 CI.NCII <- CI.NCII[,c("sample", "submitter_id")]
 
-ext.ci <- read.csv("/STORAGE/csbig/anakamura/DLBCL_A4/DLBCL_NCII_clinical_paper.csv")
+ext.ci <- read.csv(file.path(ClinicalInfo, "DLBCL_NCII_clinical_paper.csv"))
+
 ext.ci <- ext.ci[ext.ci$dbGaP.subject.ID %in% CI.NCII$submitter_id,]
 length(which(ext.ci$Follow_up.Time._yrs == 0))
 #[1] 247
@@ -107,7 +113,7 @@ Normal_lymph.raw.coll <- counts(ddsColl)
 saveRDS(Normal_lymph.raw.coll, paste0(Raw.dir, "Normal_Lymph_BL_Raw_collapsed_counts.RDS"))
 
 #### Get CTSP ####
-#setwd("/STORAGE/csbig/anakamura/DLBCL_A4/")
+
 qry.rna_DLBCL_CTSP <- GDCquery(project = "CTSP-DLBCL1",
                                data.category= "Transcriptome Profiling",
                                data.type = "Gene Expression Quantification",
@@ -120,7 +126,8 @@ DLBCL.CTSP <- GDCprepare(qry.rna_DLBCL_CTSP, summarizedExperiment = TRUE)
 
 CI.original <- as.data.frame(colData(DLBCL.CTSP))
 CI.original$sample <- gsub("-sample", "", CI.original$sample)
-#Seems that clinical data is awful, let's try to get it form another source
+
+#Complete the clinical data using the json files 
 qry.rna_DLBCL_CTSP.clinical <- GDCquery(project = "CTSP-DLBCL1",
                                         data.category= "Clinical",
                                         data.type = "Clinical Supplement")
@@ -203,13 +210,9 @@ UpdatedCI.Global <- UpdatedCI.Global[!duplicated(UpdatedCI.Global$submitter_id),
 
 saveRDS(UpdatedCI.Global, file.path(ClinicalInfo, "RCHOP_CTSPDLBCL_Update_16_12_24.RDS"))
 
-#UpdatedCI.Global <- readRDS("RCHOP_CTSPDLBCL_Update_16_12_24.RDS")
-
 CI.Full <- UpdatedCI.Global %>% dplyr::inner_join(CI.original %>% dplyr::select(sample, international_prognostic_index, ann_arbor_pathologic_stage,
                                                                                 cause_of_death, vital_status, days_to_death),
                                                   by = c("submitter_id" = "sample"))
-
-#CI.Full <- CI.Full[-which(CI.Full$cause_of_death == "Not Cancer Related"),]
 
 colnames(DLBCL.CTSP) <- gsub("-sample", "", colnames(DLBCL.CTSP))
 
@@ -220,36 +223,36 @@ write.csv(CI.Full, paste0(ClinicalInfo, "CIFull_CTSP_DLBCL_RCHOP_A17.csv"),
           quote = F, row.names = F)
 
 #### Filter annotation ####
-setwd("/STORAGE/csbig/anakamura/DLBCL_A4/A17")
-annot_TCGA <- as.data.frame(rowData(DLBCL.NICC))
-annot_TCGA$Ensembl <- gsub("\\.[0-9]*", "", annot_TCGA$gene_id)
-dim(annot_TCGA)
-annot_TCGA <- annot_TCGA %>% inner_join(annot[,c("Ensembl","Ensembl_ID_Version","HGNC_symbol", "HGNC_ID", "Type", "Chr", "GC", "Start", "End","Length")], 
+
+annot_GDC <- as.data.frame(rowData(DLBCL.NICC))
+annot_GDC$Ensembl <- gsub("\\.[0-9]*", "", annot_GDC$gene_id)
+dim(annot_GDC)
+annot_GDC <- annot_GDC %>% inner_join(annot[,c("Ensembl","Ensembl_ID_Version","HGNC_symbol", "HGNC_ID", "Type", "Chr", "GC", "Start", "End","Length")], 
                                         by = c("Ensembl" = "Ensembl"))
 dim(annot)
 #[1] 41232    10
-dim(annot_TCGA)
+dim(annot_GDC)
 #[1] 40935    20
 
-which(duplicated(annot_TCGA$gene_name))
+which(duplicated(annot_GDC$gene_name))
 #[1] 38098 38605 38823 39947 39948 39994 40024 40061 40066 40787
-which(duplicated(annot_TCGA$HGNC_symbol))
+which(duplicated(annot_GDC$HGNC_symbol))
 # [1] 31553 35560 36385 37794 38002 38605 38751 39947 39948 39994 40024 40061
 # [13] 40066 40124 40763 40787 40791 40902
 
-duplicated_GeneNames <- annot_TCGA$HGNC_symbol[which(duplicated(annot_TCGA$HGNC_symbol))]
-dim(annot_TCGA)
+duplicated_GeneNames <- annot_GDC$HGNC_symbol[which(duplicated(annot_GDC$HGNC_symbol))]
+dim(annot_GDC)
 #40935    19
-annot_TCGA <- annot_TCGA[!(annot_TCGA$HGNC_symbol %in% duplicated_GeneNames),]
-dim(annot_TCGA)
+annot_GDC <- annot_GDC[!(annot_GDC$HGNC_symbol %in% duplicated_GeneNames),]
+dim(annot_GDC)
 #[1] 40899    20
 
-annot_TCGA <- annot_TCGA[annot_TCGA$Type == "protein_coding",]
-dim(annot_TCGA)
+annot_GDC <- annot_GDC[annot_GDC$Type == "protein_coding",]
+dim(annot_GDC)
 # [1] 19391    20
 
-saveRDS(annot_TCGA, "annot_TCGA_1612.RDS")
-annot <- readRDS("annot_TCGA_1612.RDS")
+saveRDS(annot_GDC, file.path(Raw.dir, "annot_GDC.RDS"))
+annot <- readRDS("annot_GDC.RDS")
 
 #### Get GOYA ####
 
@@ -257,7 +260,7 @@ urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_coun
 path <- paste(urld, "acc=GSE125966", "file=GSE125966_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep="&");
 GOYA_raw <- as.data.frame(data.table::fread(path, header=T, colClasses="integer"), rownames=1)
 
-goya_annot <- read.delim("/STORAGE/csbig/anakamura/DLBCL_A4/Human.GRCh38.p13.annot.tsv")
+goya_annot <- read.delim(file.path(Raw.dir, "Human.GRCh38.p13.annot.tsv"))
 goya_annot <- goya_annot[goya_annot$GeneType == "protein-coding",]
 goya_annot <- goya_annot[goya_annot$EnsemblGeneID != "",]
 
@@ -289,7 +292,7 @@ GOYA_raw$GeneID <- goya_annot$EnsemblGeneID[match(GOYA_raw$GeneID, goya_annot$Ge
 rownames(GOYA_raw) <- GOYA_raw$GeneID
 GOYA_raw <- GOYA_raw[,-1]
 
-#### Filter TCGA ####
+#### Filter GDC ####
 
 Get_raw_matrix <- function(z) {
   dataFilt <- TCGAanalyze_Filtering(tabDF = z,
@@ -308,14 +311,14 @@ Get_raw_matrix <- function(z) {
 NICC_StrandedSecond <- assay(DLBCL.NICC, 3)
 CTSP_StrandedSecond <- assay(DLBCL.CTSP, 3)
 
-TCGA_Raw.F <- Get_raw_matrix(cbind(CTSP_StrandedSecond[rownames(CTSP_StrandedSecond) %in% annot$gene_id,],
+GDC_Raw.F <- Get_raw_matrix(cbind(CTSP_StrandedSecond[rownames(CTSP_StrandedSecond) %in% annot$gene_id,],
                                    NICC_StrandedSecond[rownames(NICC_StrandedSecond) %in% annot$gene_id,], 
                                    Normal_lymph.raw.coll[rownames(Normal_lymph.raw.coll) %in% annot$gene_id,]))
 #[1] 14159   258
 
-annot.TCGA <- annot[annot$gene_id %in% rownames(TCGA_Raw.F), ]
+annot.GDC <- annot[annot$gene_id %in% rownames(GDC_Raw.F), ]
 
-rownames(TCGA_Raw.F) <- annot.TCGA$HGNC_symbol[match(annot.TCGA$gene_id, rownames(TCGA_Raw.F))]
+rownames(GDC_Raw.F) <- annot.GDC$HGNC_symbol[match(annot.GDC$gene_id, rownames(GDC_Raw.F))]
 
 GOYA_Raw.F <- Get_raw_matrix(cbind(GOYA_raw[match(annot$Ensembl, rownames(GOYA_raw)),],
                                    Normal_lymph.raw.coll[rownames(Normal_lymph.raw.coll) %in% annot$gene_id,]))
@@ -325,13 +328,13 @@ annot.GOYA <- annot[annot$Ensembl %in% rownames(GOYA_Raw.F), ]
 
 rownames(GOYA_Raw.F) <- annot.GOYA$HGNC_symbol[match(annot.GOYA$Ensembl, rownames(GOYA_Raw.F))]
 
-length(intersect(rownames(GOYA_Raw.F), rownames(TCGA_Raw.F)))
+length(intersect(rownames(GOYA_Raw.F), rownames(GDC_Raw.F)))
 #[1] 12887
 
-TCGA_Raw.F <- TCGA_Raw.F[rownames(TCGA_Raw.F) %in% rownames(GOYA_Raw.F),]
-GOYA_Raw.F <- GOYA_Raw.F[rownames(GOYA_Raw.F) %in% rownames(TCGA_Raw.F),]
+GDC_Raw.F <- GDC_Raw.F[rownames(GDC_Raw.F) %in% rownames(GOYA_Raw.F),]
+GOYA_Raw.F <- GOYA_Raw.F[rownames(GOYA_Raw.F) %in% rownames(GDC_Raw.F),]
 
-GOYA_Raw.F <- GOYA_Raw.F[match(rownames(TCGA_Raw.F), 
+GOYA_Raw.F <- GOYA_Raw.F[match(rownames(GDC_Raw.F), 
                                rownames(GOYA_Raw.F)), -c(554:559)]
 
 #### Get Full Clinical object ####
@@ -370,7 +373,7 @@ ext.ci$OS_time <- round(365*ext.ci$OS_time)
 ext.ci$PFS_time <- round(365*ext.ci$PFS_time)
 ext.ci$PFS_time <- ifelse(is.na(ext.ci$PFS_time), ext.ci$OS_time, ext.ci$PFS_time)
 
-CI.GOYA <- read.csv("/STORAGE/csbig/anakamura/DLBCL_A4/Goya_Clinical_Data.csv")
+CI.GOYA <- read.csv(file.path(ClinicalInfo, "Goya_Clinical_Data.csv"))
 CI.GOYA <- CI.GOYA[,c(2,8)]
 CI.GOYA <- CI.GOYA %>% dplyr::rename("Sample" = "Accession",
                                      "IPI" = "Ipi",
@@ -402,12 +405,12 @@ CI.GOYA$COO <- ifelse(CI.GOYA$COO == "", NA, CI.GOYA$COO)
 
 ext.ci$COO <- ifelse(ext.ci$COO == "Unclass", "Unclassified", ext.ci$COO)
 
-CI.Full <- CI.Full %>% mutate(Source = "TCGA")
-ext.ci <- ext.ci %>% mutate(Source = "TCGA")
+CI.Full <- CI.Full %>% mutate(Source = "GDC")
+ext.ci <- ext.ci %>% mutate(Source = "GDC")
 CI.GOYA <- CI.GOYA %>% mutate(Source = "GEO")
 
 CompleteCI <- rbind(CI.Full, ext.ci, CI.GOYA)
-saveRDS(CompleteCI, "CompleteCI.RDS")
+saveRDS(CompleteCI, file.path(ClinicalInfo, "CompleteCI.RDS"))
 
 CompleteCI$PFS_status[CompleteCI$PFS_time > 1825] <- 0
 CompleteCI$PFS_time[CompleteCI$PFS_time > 1825] <- 1825
@@ -415,7 +418,7 @@ CompleteCI$PFS_time[CompleteCI$PFS_time > 1825] <- 1825
 CompleteCI$OS_status[CompleteCI$OS_time > 1825] <- 0
 CompleteCI$OS_time[CompleteCI$OS_time > 1825] <- 1825
 
-saveRDS(CompleteCI, "CompleteCI_5yrCensored.RDS")
+saveRDS(CompleteCI, file.path(ClinicalInfo, "CompleteCI_5yrCensored.RDS"))
 
 #### Split data ####
 
@@ -432,15 +435,15 @@ CI.Normal <- data.frame(Sample = NormalSamples,
                         COO = NA, 
                         Genetic_subtype = NA,
                         Treatment = "Lymphoid normal",
-                        Source = "TCGA",
+                        Source = "GDC",
                         primary_diagnosis = "Lymphoid normal")
 
 CompleteCI <- CompleteCI %>% mutate(primary_diagnosis = "DLBCL")
 
 CI.Full.Normal <- bind_rows(CompleteCI, CI.Normal)
 
-DLBCL <- cbind(GOYA_Raw.F, TCGA_Raw.F)
-saveRDS(DLBCL, file.path(Raw.dir, "DLBCL_A17_Raw.RDS"))
+DLBCL <- cbind(GOYA_Raw.F, GDC_Raw.F)
+saveRDS(DLBCL, file.path(Raw.dir, "DLBCL_RawCounts.RDS"))
 
 RandomPartitions <- list()
 
@@ -568,17 +571,13 @@ CI.Normal <- data.frame(Sample = NormalSamples,
                         COO = NA, 
                         Genetic_subtype = NA,
                         Treatment = "Lymphoid normal",
-                        Source = "TCGA",
+                        Source = "GDC",
                         primary_diagnosis = "Lymphoid normal")
 
-CompleteCI <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A17/CompleteCI_5yrCensored.RDS")
+CompleteCI <- readRDS(file.path(ClinicalInfo, "CompleteCI_5yrCensored.RDS"))
 CompleteCI <- CompleteCI %>% mutate(primary_diagnosis = "DLBCL")
 
 CI.Full.Normal <- bind_rows(CompleteCI, CI.Normal)
-
-cor(c(1:5), c(6:10), method = "pearson")
-
-Hmisc::rcorr(c(1:5), c(6:10), type = "pearson")
 
 par_Sp_Corr <- function(expr_m, x){
   
@@ -716,7 +715,7 @@ Lioness_PerSource.G <- function(j) {
   return(SSN)
 }
 
-for(i in 4:10){
+for(i in 1:10){
   
   print(i)
   
@@ -771,7 +770,7 @@ library(glmnet)
 NormalSamples <- c("BLGSP-71-19-99988", "BLGSP-71-19-99989", "BLGSP-71-19-99996",    
                    "BLGSP-71-19-99997", "BLGSP-71-19-99998", "BLGSP-71-19-99999")
 
-CI.Global <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A17/CompleteCI_5yrCensored.RDS")
+CI.Global <- readRDS(file.path(ClinicalInfo, "CompleteCI_5yrCensored.RDS"))
 CI.Global$PFS_status[CI.Global$PFS_time > 1825] <- 0
 CI.Global$PFS_time[CI.Global$PFS_time > 1825] <- 1825
 
@@ -859,7 +858,7 @@ for(RP in 1:10){
   print(RP)
   
   #Load RCHOP
-  Lioness.RCHOP <- data.table::fread(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_RCHOP_TrainSet_", RP, ".csv"))
+  Lioness.RCHOP <- data.table::fread(paste0("SSNs/SSN_RCHOP_TrainSet_", RP, ".csv"))
   Lioness.RCHOP <- as.data.frame(Lioness.RCHOP)
   rownames(Lioness.RCHOP) <- Lioness.RCHOP[,1]
   Lioness.RCHOP <- Lioness.RCHOP[,-1]
@@ -868,7 +867,7 @@ for(RP in 1:10){
   Lioness.RCHOP.scale <- as.data.frame(scale(t(Lioness.RCHOP)))
   
   #Load GCHOP
-  Lioness.GCHOP <- data.table::fread(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_GCHOP_TrainSet_", RP, ".csv"))
+  Lioness.GCHOP <- data.table::fread(paste0("SSNs/SSN_GCHOP_TrainSet_", RP, ".csv"))
   Lioness.GCHOP <- as.data.frame(Lioness.GCHOP)
   rownames(Lioness.GCHOP) <- Lioness.GCHOP[,1]
   Lioness.GCHOP <- Lioness.GCHOP[,-1]
@@ -905,17 +904,15 @@ library(exactRankTests)
 library(future.apply)
 library(glmnet)
 
+results <- "UnivariateAnalysis"
+dir.create(results)                           
+
 for(i in 1:10){
   
   Summ.i <- readRDS(paste0("SummaryKMs/SummaryKM_GCHOP_RP", i,".RDS"))
   
-  # Summ.i.i <- Summ.i %>% filter(PFS.KM.pval < 0.05, OS.KM.pval < 0.05)
-  # 
-  # Summ.i.i.c <- Summ.i %>% filter(Concordance.PFS > 0.6, Concordance.OS > 0.6)
-  
   Summ.i <- Summ.i %>% filter(PFS.KM.pval < 0.05 | Concordance.PFS >= 0.6|
                                 OS.KM.pval < 0.05 | Concordance.OS >= 0.6)
-  #Summ.i <- Summ.i %>% filter(PFS.KM.pval < 0.05)
   
   if(i == 1){
     Summ.G <- Summ.i
@@ -949,28 +946,18 @@ RCHOP.Edges <- Summ.R %>% group_by(Edge) %>% summarise(Count = n()) %>% arrange(
 write.csv( Summ.R %>% group_by(Edge) %>% summarise(Count = n()) %>% arrange(desc(Count)) %>%
              filter(Count >= 6) %>% group_by(Edge) %>% mutate(Source = stringr::str_split(Edge, "_")[[1]][1],
                                                               Target = stringr::str_split(Edge, "_")[[1]][2]),
-           "UnivariableEdges.csv", quote = F, row.names = F)
-
-Summ.R <- Summ.R %>% group_by(Edge) %>% summarise(Count = n()) %>% arrange(desc(Count))
-saveRDS(Summ.R, "SummR_plot.RDS")
+           file.path(results, "Univariable_Analysis_Stable_Network.csv"), quote = F, row.names = F)
 
 relevantEdges <- list("GCHOP" = GCHOP.Edges, "RCHOP" = RCHOP.Edges)
 
-saveRDS(relevantEdges, "relevantEdges_UnivariateFilter.RDS")
+saveRDS(relevantEdges, file.path(results,"relevantEdges_UnivariateFilter.RDS"))
 
-#### Complete GCHOP ####
+#### Complete GCHOP stable network across random partitions ####
 
 library(dplyr)
 library(tidyr)
 library(Hmisc)
 library(future.apply)
-
-#Parece que los enlaces que más hacen falta corresponden a 
-#los de grupo de tratamiento contrario
-
-#Completemos las redes de cada particion (por tratamiento) para 
-#poder evaluar el conjunto de enlaces seleccionados para cada tratamiento
-#en elastic net
 
 NormalSamples <- c("BLGSP-71-19-99988", "BLGSP-71-19-99989", "BLGSP-71-19-99996",    
                    "BLGSP-71-19-99997", "BLGSP-71-19-99998", "BLGSP-71-19-99999")
@@ -983,12 +970,12 @@ CI.Normal <- data.frame(Sample = NormalSamples,
                         OS_status = NA,
                         Gender = NA, 
                         Treatment = "Lymphoid normal",
-                        Source = "TCGA",
+                        Source = "GDC",
                         primary_diagnosis = "Lymphoid normal")
 
-CI.Full <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A17/CompleteCI_5yrCensored.RDS")
+CI.Full <- readRDS(file.path(ClinicalInfo, "CompleteCI_5yrCensored.RDS"))
 CI.Full <- CI.Full %>% mutate(Source = case_when(Source == "GOYA" ~ "GOYA",
-                                                 .default = "TCGA"),
+                                                 .default = "GDC"),
                               primary_diagnosis = "DLBCL")
 
 CI.Full.Normal <- bind_rows(CI.Full, CI.Normal)
@@ -1002,7 +989,7 @@ GCHOP.samples <- CI.Full.Normal %>% filter(Treatment == "GA101") %>%
 ExprMs <- "NormData/"
 SSNs <- "SSNs/"
 
-relevantEdges <- readRDS("relevantEdges_UnivariateFilter.RDS")
+relevantEdges <- file.path(results,"relevantEdges_UnivariateFilter.RDS")
 
 relevantEdges <- relevantEdges$GCHOP
 
@@ -1070,19 +1057,12 @@ future_lapply(1:10, FUN = IterateGCN_Lioness, future.seed = TRUE)
 
 future::plan(sequential)
 
-#### Complete RCHOP ####
+#### Complete RCHOP stable network across random partitions ####
 
 library(dplyr)
 library(tidyr)
 library(Hmisc)
 library(future.apply)
-
-#Parece que los enlaces que más hacen falta corresponden a 
-#los de grupo de tratamiento contrario
-
-#Completemos las redes de cada particion (por tratamiento) para 
-#poder evaluar el conjunto de enlaces seleccionados para cada tratamiento
-#en elastic net
 
 NormalSamples <- c("BLGSP-71-19-99988", "BLGSP-71-19-99989", "BLGSP-71-19-99996",    
                    "BLGSP-71-19-99997", "BLGSP-71-19-99998", "BLGSP-71-19-99999")
@@ -1095,12 +1075,12 @@ CI.Normal <- data.frame(Sample = NormalSamples,
                         OS_status = NA,
                         Gender = NA, 
                         Treatment = "Lymphoid normal",
-                        Source = "TCGA",
+                        Source = "GDC",
                         primary_diagnosis = "Lymphoid normal")
 
-CI.Full <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A17/CompleteCI_5yrCensored.RDS")
+CI.Full <- file.path(results,"relevantEdges_UnivariateFilter.RDS")
 CI.Full <- CI.Full %>% mutate(Source = case_when(Source == "GOYA" ~ "GOYA",
-                                                 .default = "TCGA"),
+                                                 .default = "GDC"),
                               primary_diagnosis = "DLBCL")
 
 CI.Full.Normal <- bind_rows(CI.Full, CI.Normal)
@@ -1111,7 +1091,7 @@ RCHOP.samples <- CI.Full.Normal %>% filter(Treatment == "Rituximab") %>%
 ExprMs <- "NormData/"
 SSNs <- "SSNs/"
 
-relevantEdges <- readRDS("relevantEdges_UnivariateFilter.RDS")
+relevantEdges <- file.path(results,"relevantEdges_UnivariateFilter.RDS")
 
 relevantEdges <- relevantEdges$RCHOP
 
@@ -1191,7 +1171,7 @@ library(MASS)
 NormalSamples <- c("BLGSP.71.19.99988", "BLGSP.71.19.99989", "BLGSP.71.19.99996",    
                    "BLGSP.71.19.99997", "BLGSP.71.19.99998", "BLGSP.71.19.99999")
 
-CI.Global <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A17/CompleteCI_5yrCensored.RDS")
+CI.Global <- file.path(results,"relevantEdges_UnivariateFilter.RDS")
 CI.Global$PFS_status[CI.Global$PFS_time > 1825] <- 0
 CI.Global$PFS_time[CI.Global$PFS_time > 1825] <- 1825
 
@@ -1202,11 +1182,9 @@ ElasticNet.PFS.OS <- function(i){
   
   #print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  #Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% relevantEdges$RCHOP,]
   
   Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
   
@@ -1284,11 +1262,9 @@ ElasticNet.PFS.OS.min <- function(i){
   
   #print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  #Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% relevantEdges$RCHOP,]
   
   Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
   
@@ -1369,8 +1345,11 @@ FirstFilter <- future_lapply(1:10,
 FirstFilter.Edges <- do.call(rbind, lapply(FirstFilter, function(x) x$Edges))
 FirstFilter.Results <- do.call(rbind, lapply(FirstFilter, function(x) x$EN))
 
-saveRDS(FirstFilter.Edges, "ElasticNet_Edges_RCHOP.RDS")
-saveRDS(FirstFilter.Results, "ElasticNet_Results_RCHOP.RDS")
+ElasticNet_results.dir <- "ElasticNet_results"
+dir.create(ElasticNet_results.dir)                                    
+
+saveRDS(FirstFilter.Edges, file.path(ElasticNet_results.dir, "ElasticNet_Edges_RCHOP.RDS"))
+saveRDS(FirstFilter.Results, file.path(ElasticNet_results.dir, "ElasticNet_Results_RCHOP.RDS"))
 
 plan(sequential)
 
@@ -1384,7 +1363,7 @@ length(Edges.R)
 for(i in 1:10){
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.R,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1457,7 +1436,7 @@ for(i in 1:10){
   
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt1,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1530,7 +1509,7 @@ for(i in 1:10){
   
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt2,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1604,7 +1583,7 @@ for(i in 1:10){
   
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt3,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1683,7 +1662,7 @@ FinalEdges <-  coeff.summary %>%
   group_by(Edge, Type) %>%
   summarise(Count = n()) %>%
   group_by(Edge)  %>% filter(Count >= 8) %>%
-  filter(n_distinct(Type) == 2) %>% # Solo conservar los Edge que están en OS y PFS
+  filter(n_distinct(Type) == 2) %>% # Keep edges relevant in OS and PFS
   ungroup() %>% pull(Edge) %>% unique %>% as.vector
 
 length(FinalEdges)
@@ -1693,7 +1672,7 @@ for(i in 1:10){
   
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% FinalEdges,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1755,7 +1734,7 @@ CheckFinalEdges <- coeff.summary %>%
   group_by(Edge, Type) %>%
   summarise(Count = n()) %>%
   group_by(Edge)  %>% filter(Count >= 8) %>%
-  filter(n_distinct(Type) == 2) %>% # Solo conservar los Edge que están en OS y PFS
+  filter(n_distinct(Type) == 2) %>% # Keep edges relevant in OS and PFS
   ungroup() %>% pull(Edge) %>% unique %>% as.vector
 
 length(which(FinalEdges %in% CheckFinalEdges)) == length(FinalEdges)
@@ -1768,7 +1747,7 @@ for(i in 1:10){
   
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1830,7 +1809,7 @@ CheckFinalEdges2 <- coeff.summary %>%
   group_by(Edge, Type) %>%
   summarise(Count = n()) %>%
   group_by(Edge)  %>% filter(Count >= 8) %>%
-  filter(n_distinct(Type) == 2) %>% # Solo conservar los Edge que están en OS y PFS
+  filter(n_distinct(Type) == 2) %>% # Keep edges relevant in OS and PFS
   ungroup() %>% pull(Edge) %>% unique %>% as.vector
 
 length(which(CheckFinalEdges %in% CheckFinalEdges2)) == length(CheckFinalEdges)
@@ -1839,13 +1818,13 @@ length(which(CheckFinalEdges %in% CheckFinalEdges2)) == length(CheckFinalEdges)
 length(CheckFinalEdges2)
 #[1] 14
 
-saveRDS(CheckFinalEdges2, "RCHOP_SelectedEdges.RDS")
+saveRDS(CheckFinalEdges2, file.path(ElasticNet_results.dir, "RCHOP_SelectedEdges.RDS"))
 
 for(i in 1:10){
   
   print(i)
   
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+  Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_RCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges2,]
   Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
   
@@ -1879,839 +1858,831 @@ for(i in 1:10){
   
 }
 
-saveRDS(summC, "summC_RCHOP_Train.RDS")
+saveRDS(summC, file.path(ElasticNet_results.dir, "summC_RCHOP_Train.RDS"))
 
 aic.summ <- rbind(aic.summ1, aic.summ2, aic.summ3, aic.summ4,
                   aic.Check1, aic.Check2)
-saveRDS(aic.summ, "RCHOP_AIC_Deltas.RDS")
-
-#### Elastic net par GCHOP ####
-
-library(dplyr)
-library(tidyr)
-library(survival)
-library(future.apply)
-library(glmnet)
-library(MASS)
-
-NormalSamples <- c("BLGSP.71.19.99988", "BLGSP.71.19.99989", "BLGSP.71.19.99996",    
-                   "BLGSP.71.19.99997", "BLGSP.71.19.99998", "BLGSP.71.19.99999")
-
-CI.Global <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A17/CompleteCI_5yrCensored.RDS")
-CI.Global$PFS_status[CI.Global$PFS_time > 1825] <- 0
-CI.Global$PFS_time[CI.Global$PFS_time > 1825] <- 1825
-
-CI.GCHOP <- CI.Global %>% filter(Treatment == "GA101")
-
-ElasticNet.PFS.OS <- function(i){
-  
-  #print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  #Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% relevantEdges$RCHOP,]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, Source), by = "Sample")
-  
-  X <- as.matrix(CoxSurvCI %>% dplyr::select(-PFS_time,  -PFS_status,
-                                             -Sample, -Source))
-  y <- Surv(CoxSurvCI$PFS_time, CoxSurvCI$PFS_status)
-  
-  set.seed(123)
-  cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
-  
-  selected_edges <- coef(cv_fit, s = "lambda.1se") 
-  
-  selected_edges_df <- as.data.frame(as.matrix(selected_edges))
-  
-  selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
-  colnames(selected_edges_df)[1] <- "lambda.1se"
-  
-  selected_edges_df <- selected_edges_df %>% filter(lambda.1se != 0) %>% arrange(abs(lambda.1se))
-  
-  selected_edges_df.PFS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "PFS")
-  
-  lambda_min.PFS <- cv_fit$lambda.1se
-  
-  mean_cvm.PFS <- min(cv_fit$cvm)
-  
-  #Now OS
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, OS_status, OS_time, Source), by = "Sample")
-  
-  X <- as.matrix(CoxSurvCI %>% dplyr::select(-OS_time,  -OS_status,
-                                             -Sample, -Source))
-  y <- Surv(CoxSurvCI$OS_time, CoxSurvCI$OS_status)
-  
-  set.seed(123)
-  cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
-  
-  selected_edges <- coef(cv_fit, s = "lambda.1se") 
-  
-  selected_edges_df <- as.data.frame(as.matrix(selected_edges))
-  
-  selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
-  colnames(selected_edges_df)[1] <- "lambda.1se"
-  
-  selected_edges_df <- selected_edges_df %>% filter(lambda.1se != 0) %>% arrange(abs(lambda.1se))
-  
-  selected_edges_df.OS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "OS")
-  
-  selected_edges_df <- rbind(selected_edges_df.OS, selected_edges_df.PFS)
-  
-  lambda_min.OS <- cv_fit$lambda.1se
-  
-  mean_cvm.OS <- min(cv_fit$cvm)
-  
-  results.EN <- data.frame(
-    Partition = paste0("RP", i),
-    LambdaMin.OS = lambda_min.OS,
-    MeanCVError.OS = mean_cvm.OS,
-    LambdaMin.PFS = lambda_min.PFS,
-    MeanCVError.PFS = mean_cvm.PFS)
-  
-  return(list(Edges = selected_edges_df, EN = results.EN))
-  
-}
-
-ElasticNet.PFS.OS.min <- function(i){
-  
-  #print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  #Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% relevantEdges$GCHOP,]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, Source), by = "Sample")
-  
-  X <- as.matrix(CoxSurvCI %>% dplyr::select(-PFS_time,  -PFS_status,
-                                             -Sample, -Source))
-  y <- Surv(CoxSurvCI$PFS_time, CoxSurvCI$PFS_status)
-  
-  set.seed(123)
-  cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
-  
-  selected_edges <- coef(cv_fit, s = "lambda.min") 
-  
-  selected_edges_df <- as.data.frame(as.matrix(selected_edges))
-  
-  selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
-  colnames(selected_edges_df)[1] <- "lambda.min"
-  
-  selected_edges_df <- selected_edges_df %>% filter(lambda.min != 0) %>% arrange(abs(lambda.min))
-  
-  selected_edges_df.PFS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "PFS")
-  
-  lambda_min.PFS <- cv_fit$lambda.min
-  
-  mean_cvm.PFS <- min(cv_fit$cvm)
-  
-  #Now OS
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, OS_status, OS_time, Source), by = "Sample")
-  
-  X <- as.matrix(CoxSurvCI %>% dplyr::select(-OS_time,  -OS_status,
-                                             -Sample, -Source))
-  y <- Surv(CoxSurvCI$OS_time, CoxSurvCI$OS_status)
-  
-  set.seed(123)
-  cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
-  
-  selected_edges <- coef(cv_fit, s = "lambda.min") 
-  
-  selected_edges_df <- as.data.frame(as.matrix(selected_edges))
-  
-  selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
-  colnames(selected_edges_df)[1] <- "lambda.min"
-  
-  selected_edges_df <- selected_edges_df %>% filter(lambda.min != 0) %>% arrange(abs(lambda.min))
-  
-  selected_edges_df.OS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "OS")
-  
-  selected_edges_df <- rbind(selected_edges_df.OS, selected_edges_df.PFS)
-  
-  lambda_min.OS <- cv_fit$lambda.min
-  
-  mean_cvm.OS <- min(cv_fit$cvm)
-  
-  results.EN <- data.frame(
-    Partition = paste0("RP", i),
-    LambdaMin.OS = lambda_min.OS,
-    MeanCVError.OS = mean_cvm.OS,
-    LambdaMin.PFS = lambda_min.PFS,
-    MeanCVError.PFS = mean_cvm.PFS)
-  
-  return(list(Edges = selected_edges_df, EN = results.EN))
-  
-}
-
-future::plan(multisession, workers = 10)
-FirstFilter <- future_lapply(1:10, 
-                             ElasticNet.PFS.OS.min,
-                             future.seed = TRUE)
-FirstFilter.Edges <- do.call(rbind, lapply(FirstFilter, function(x) x$Edges))
-FirstFilter.Results <- do.call(rbind, lapply(FirstFilter, function(x) x$EN))
-
-saveRDS(FirstFilter.Edges, "ElasticNet_Edges_GCHOP.RDS")
-saveRDS(FirstFilter.Results, "ElasticNet_Results_GCHOP.RDS")
-
-plan(sequential)
-
-#Let's keep the edges selected at least in 7 partitions
-#either in the PFS or the OS model
-
-Edges.R <- FirstFilter.Edges %>% group_by(Edge) %>% distinct(RandomSet) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% dplyr::select(Edge) %>% unlist %>% as.vector
-
-length(Edges.R)
-#[1] 48
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.R,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 1) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 1)
-  }
-  
-}
-
-aic.summ1 <- aic.summ
-
-coeff.summary1 <- coeff.summary
-
-Edges.Filt1 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
-  distinct(RP) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
-
-length(which(Edges.R %in% Edges.Filt1)) == length(Edges.R)
-#[1] FALSE
-
-length(Edges.Filt1)
-#[1] 33
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt1,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 2) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 2)
-  }
-  
-}
-
-aic.summ2 <- aic.summ
-
-Edges.Filt2 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
-  distinct(RP) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
-
-coeff.summary2 <- coeff.summary
-
-length(which(Edges.Filt1 %in% Edges.Filt2)) == length(Edges.Filt1)
-#[1] FALSE
-
-length(Edges.Filt2)
-#[1] 24
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt2,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 3) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 3)
-  }
-  
-}
-
-aic.summ3 <- aic.summ
-
-Edges.Filt3 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
-  distinct(RP) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
-
-coeff.summary3 <- coeff.summary
-
-length(which(Edges.Filt2 %in% Edges.Filt3)) == length(Edges.Filt2)
-#[1] FALSE
-
-length(Edges.Filt3)
-#[1] 22
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt3,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 4) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 4)
-  }
-  
-}
-
-aic.summ4 <- aic.summ
-
-Edges.Filt4 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
-  distinct(RP) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
-
-length(which(Edges.Filt3 %in% Edges.Filt4)) == length(Edges.Filt3)
-#[1] FALSE
-
-length(Edges.Filt4)
-#[1] 18
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt4,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 4) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 4)
-  }
-  
-}
-
-aic.summ5 <- aic.summ
-
-Edges.Filt5 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
-  distinct(RP) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
-
-length(which(Edges.Filt4 %in% Edges.Filt5)) == length(Edges.Filt4)
-#[1] FALSE
-
-length(Edges.Filt5)
-#[1] 17
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt5,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 4) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 4)
-  }
-  
-}
-
-aic.summ6 <- aic.summ
-
-Edges.Filt6 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
-  distinct(RP) %>%
-  summarise(Count = n()) %>%
-  arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
-
-length(which(Edges.Filt5 %in% Edges.Filt6)) == length(Edges.Filt5)
-#[1] TRUE
-
-length(Edges.Filt6)
-#[1] 17
-
-#Since now, all of the edges are selected at least in seven partitions
-#either in the OS or the PFS model, let's keep now only those selected in both
-#models at least 7 times
-
-FinalEdges <-  coeff.summary %>%
-  filter(p_value < 0.05) %>%
-  dplyr::select(Edge, Type) %>%
-  group_by(Edge, Type) %>%
-  summarise(Count = n()) %>%
-  group_by(Edge)  %>% filter(Count >= 8) %>%
-  filter(n_distinct(Type) == 2) %>% # Solo conservar los Edge que están en OS y PFS
-  ungroup() %>% pull(Edge) %>% unique %>% as.vector
-
-length(FinalEdges)
-#[1] 10
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% FinalEdges,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 5) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 5)
-  }
-  
-}
-
-CheckFinalEdges <-  coeff.summary %>%
-  filter(p_value < 0.05) %>%
-  dplyr::select(Edge, Type) %>%
-  group_by(Edge, Type) %>%
-  summarise(Count = n()) %>%
-  group_by(Edge)  %>% filter(Count >= 8) %>%
-  filter(n_distinct(Type) == 2) %>% # Solo conservar los Edge que están en OS y PFS
-  ungroup() %>% pull(Edge) %>% unique %>% as.vector
-
-length(which(FinalEdges %in% CheckFinalEdges)) == length(FinalEdges)
-#[1] FALSE
-
-length(CheckFinalEdges)
-#[1] 7
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  Cox.PFS.2 <- stepAIC(Cox.PFS.1)
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  Cox.OS.2 <- stepAIC(Cox.OS.1)
-  
-  coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
-  coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
-  
-  coeff2.PFS <- coeff2.PFS[,c(1,5)]
-  colnames(coeff2.PFS) <- c("Coefficient", "p_value")
-  coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
-                                      RP = i, Type = "PFS")
-  
-  coeff2.OS <- coeff2.OS[,c(1,5)]
-  colnames(coeff2.OS) <- c("Coefficient", "p_value")
-  coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
-                                    RP = i, Type = "OS")
-  
-  if(i == 1){
-    coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
-  } else {
-    coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
-  }
-  
-  if(i == 1){
-    aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
-                           AIC2.PFS = AIC(Cox.PFS.2),
-                           AIC1.OS = AIC(Cox.OS.1),
-                           AIC2.OS = AIC(Cox.OS.2),
-                           Partition = i,
-                           Step = 6) 
-  } else {
-    aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
-                                      AIC(Cox.OS.1), AIC(Cox.OS.2),
-                                      i, 6)
-  }
-  
-}
-
-CheckFinalEdges2 <-  coeff.summary %>%
-  filter(p_value < 0.05) %>%
-  dplyr::select(Edge, Type) %>%
-  group_by(Edge, Type) %>%
-  summarise(Count = n()) %>%
-  group_by(Edge)  %>% filter(Count >= 8) %>%
-  filter(n_distinct(Type) == 2) %>% # Solo conservar los Edge que están en OS y PFS
-  ungroup() %>% pull(Edge) %>% unique %>% as.vector
-
-length(which(CheckFinalEdges %in% CheckFinalEdges2)) == length(CheckFinalEdges)
-#[1] TRUE
-
-length(CheckFinalEdges2)
-#[1] 7
-
-saveRDS(CheckFinalEdges2, "GCHOP_SelectedEdges.RDS")
-
-# aic.summ <- rbind(aic.summ1, aic.summ2, aic.summ3, aic.summ4)
-# saveRDS(aic.summ, "GCHOP_IterativeFilter_AIC_AICsummary.RDS")
-
-
-for(i in 1:10){
-  
-  print(i)
-  
-  Lioness_DLBCL_NCCI <- read.csv(paste0("/STORAGE/csbig/anakamura/DLBCL_A4/A17/SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges2,]
-  Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
-  
-  Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
-  
-  CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
-  
-  CoxSurvCI <- CoxSurvCI %>% 
-    inner_join(CI.GCHOP %>% 
-                 dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
-  
-  Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
-                     data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
-  
-  Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
-                    data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
-  
-  print(concordance(Cox.PFS.1)$concordance)
-  print(concordance(Cox.OS.1)$concordance)
-  
-}
+saveRDS(aic.summ, file.path(ElasticNet_results.dir,("RCHOP_AIC_Deltas.RDS"))
+        
+        #### Elastic net par GCHOP ####
+        
+        library(dplyr)
+        library(tidyr)
+        library(survival)
+        library(future.apply)
+        library(glmnet)
+        library(MASS)
+        
+        NormalSamples <- c("BLGSP.71.19.99988", "BLGSP.71.19.99989", "BLGSP.71.19.99996",    
+                           "BLGSP.71.19.99997", "BLGSP.71.19.99998", "BLGSP.71.19.99999")
+        
+        CI.Global <- file.path(results,"relevantEdges_UnivariateFilter.RDS")
+        CI.Global$PFS_status[CI.Global$PFS_time > 1825] <- 0
+        CI.Global$PFS_time[CI.Global$PFS_time > 1825] <- 1825
+        
+        CI.GCHOP <- CI.Global %>% filter(Treatment == "GA101")
+        
+        ElasticNet.PFS.OS <- function(i){
+          
+          #print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, Source), by = "Sample")
+          
+          X <- as.matrix(CoxSurvCI %>% dplyr::select(-PFS_time,  -PFS_status,
+                                                     -Sample, -Source))
+          y <- Surv(CoxSurvCI$PFS_time, CoxSurvCI$PFS_status)
+          
+          set.seed(123)
+          cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
+          
+          selected_edges <- coef(cv_fit, s = "lambda.1se") 
+          
+          selected_edges_df <- as.data.frame(as.matrix(selected_edges))
+          
+          selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
+          colnames(selected_edges_df)[1] <- "lambda.1se"
+          
+          selected_edges_df <- selected_edges_df %>% filter(lambda.1se != 0) %>% arrange(abs(lambda.1se))
+          
+          selected_edges_df.PFS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "PFS")
+          
+          lambda_min.PFS <- cv_fit$lambda.1se
+          
+          mean_cvm.PFS <- min(cv_fit$cvm)
+          
+          #Now OS
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, OS_status, OS_time, Source), by = "Sample")
+          
+          X <- as.matrix(CoxSurvCI %>% dplyr::select(-OS_time,  -OS_status,
+                                                     -Sample, -Source))
+          y <- Surv(CoxSurvCI$OS_time, CoxSurvCI$OS_status)
+          
+          set.seed(123)
+          cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
+          
+          selected_edges <- coef(cv_fit, s = "lambda.1se") 
+          
+          selected_edges_df <- as.data.frame(as.matrix(selected_edges))
+          
+          selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
+          colnames(selected_edges_df)[1] <- "lambda.1se"
+          
+          selected_edges_df <- selected_edges_df %>% filter(lambda.1se != 0) %>% arrange(abs(lambda.1se))
+          
+          selected_edges_df.OS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "OS")
+          
+          selected_edges_df <- rbind(selected_edges_df.OS, selected_edges_df.PFS)
+          
+          lambda_min.OS <- cv_fit$lambda.1se
+          
+          mean_cvm.OS <- min(cv_fit$cvm)
+          
+          results.EN <- data.frame(
+            Partition = paste0("RP", i),
+            LambdaMin.OS = lambda_min.OS,
+            MeanCVError.OS = mean_cvm.OS,
+            LambdaMin.PFS = lambda_min.PFS,
+            MeanCVError.PFS = mean_cvm.PFS)
+          
+          return(list(Edges = selected_edges_df, EN = results.EN))
+          
+        }
+        
+        ElasticNet.PFS.OS.min <- function(i){
+          
+          #print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          #Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% relevantEdges$GCHOP,]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, Source), by = "Sample")
+          
+          X <- as.matrix(CoxSurvCI %>% dplyr::select(-PFS_time,  -PFS_status,
+                                                     -Sample, -Source))
+          y <- Surv(CoxSurvCI$PFS_time, CoxSurvCI$PFS_status)
+          
+          set.seed(123)
+          cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
+          
+          selected_edges <- coef(cv_fit, s = "lambda.min") 
+          
+          selected_edges_df <- as.data.frame(as.matrix(selected_edges))
+          
+          selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
+          colnames(selected_edges_df)[1] <- "lambda.min"
+          
+          selected_edges_df <- selected_edges_df %>% filter(lambda.min != 0) %>% arrange(abs(lambda.min))
+          
+          selected_edges_df.PFS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "PFS")
+          
+          lambda_min.PFS <- cv_fit$lambda.min
+          
+          mean_cvm.PFS <- min(cv_fit$cvm)
+          
+          #Now OS
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, OS_status, OS_time, Source), by = "Sample")
+          
+          X <- as.matrix(CoxSurvCI %>% dplyr::select(-OS_time,  -OS_status,
+                                                     -Sample, -Source))
+          y <- Surv(CoxSurvCI$OS_time, CoxSurvCI$OS_status)
+          
+          set.seed(123)
+          cv_fit <- cv.glmnet(X, y, family = "cox", alpha = 0.5)
+          
+          selected_edges <- coef(cv_fit, s = "lambda.min") 
+          
+          selected_edges_df <- as.data.frame(as.matrix(selected_edges))
+          
+          selected_edges_df <- selected_edges_df %>% mutate(Edge = rownames(selected_edges_df))
+          colnames(selected_edges_df)[1] <- "lambda.min"
+          
+          selected_edges_df <- selected_edges_df %>% filter(lambda.min != 0) %>% arrange(abs(lambda.min))
+          
+          selected_edges_df.OS <- tibble(selected_edges_df) %>% mutate(RandomSet = i, Type = "OS")
+          
+          selected_edges_df <- rbind(selected_edges_df.OS, selected_edges_df.PFS)
+          
+          lambda_min.OS <- cv_fit$lambda.min
+          
+          mean_cvm.OS <- min(cv_fit$cvm)
+          
+          results.EN <- data.frame(
+            Partition = paste0("RP", i),
+            LambdaMin.OS = lambda_min.OS,
+            MeanCVError.OS = mean_cvm.OS,
+            LambdaMin.PFS = lambda_min.PFS,
+            MeanCVError.PFS = mean_cvm.PFS)
+          
+          return(list(Edges = selected_edges_df, EN = results.EN))
+          
+        }
+        
+        future::plan(multisession, workers = 10)
+        FirstFilter <- future_lapply(1:10, 
+                                     ElasticNet.PFS.OS.min,
+                                     future.seed = TRUE)
+        FirstFilter.Edges <- do.call(rbind, lapply(FirstFilter, function(x) x$Edges))
+        FirstFilter.Results <- do.call(rbind, lapply(FirstFilter, function(x) x$EN))
+        
+        saveRDS(FirstFilter.Edges, file.path(ElasticNet_results.dir, "ElasticNet_Edges_GCHOP.RDS"))
+        saveRDS(FirstFilter.Results, file.path(ElasticNet_results.dir, "ElasticNet_Results_GCHOP.RDS"))
+        
+        plan(sequential)
+        
+        Edges.R <- FirstFilter.Edges %>% group_by(Edge) %>% distinct(RandomSet) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% dplyr::select(Edge) %>% unlist %>% as.vector
+        
+        length(Edges.R)
+        #[1] 48
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.R,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 1) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 1)
+          }
+          
+        }
+        
+        aic.summ1 <- aic.summ
+        
+        coeff.summary1 <- coeff.summary
+        
+        Edges.Filt1 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
+          distinct(RP) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
+        
+        length(which(Edges.R %in% Edges.Filt1)) == length(Edges.R)
+        #[1] FALSE
+        
+        length(Edges.Filt1)
+        #[1] 33
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt1,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 2) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 2)
+          }
+          
+        }
+        
+        aic.summ2 <- aic.summ
+        
+        Edges.Filt2 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
+          distinct(RP) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
+        
+        coeff.summary2 <- coeff.summary
+        
+        length(which(Edges.Filt1 %in% Edges.Filt2)) == length(Edges.Filt1)
+        #[1] FALSE
+        
+        length(Edges.Filt2)
+        #[1] 24
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt2,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 3) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 3)
+          }
+          
+        }
+        
+        aic.summ3 <- aic.summ
+        
+        Edges.Filt3 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
+          distinct(RP) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
+        
+        coeff.summary3 <- coeff.summary
+        
+        length(which(Edges.Filt2 %in% Edges.Filt3)) == length(Edges.Filt2)
+        #[1] FALSE
+        
+        length(Edges.Filt3)
+        #[1] 22
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt3,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 4) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 4)
+          }
+          
+        }
+        
+        aic.summ4 <- aic.summ
+        
+        Edges.Filt4 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
+          distinct(RP) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
+        
+        length(which(Edges.Filt3 %in% Edges.Filt4)) == length(Edges.Filt3)
+        #[1] FALSE
+        
+        length(Edges.Filt4)
+        #[1] 18
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt4,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 4) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 4)
+          }
+          
+        }
+        
+        aic.summ5 <- aic.summ
+        
+        Edges.Filt5 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
+          distinct(RP) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
+        
+        length(which(Edges.Filt4 %in% Edges.Filt5)) == length(Edges.Filt4)
+        #[1] FALSE
+        
+        length(Edges.Filt5)
+        #[1] 17
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% Edges.Filt5,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 4) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 4)
+          }
+          
+        }
+        
+        aic.summ6 <- aic.summ
+        
+        Edges.Filt6 <- coeff.summary %>% filter(p_value < 0.05) %>% dplyr::select(Edge, RP) %>% group_by(Edge) %>% 
+          distinct(RP) %>%
+          summarise(Count = n()) %>%
+          arrange(desc(Count))  %>% filter(Count >= 7) %>% pull(Edge) %>% as.vector
+        
+        length(which(Edges.Filt5 %in% Edges.Filt6)) == length(Edges.Filt5)
+        #[1] TRUE
+        
+        length(Edges.Filt6)
+        #[1] 17
+        
+        #Since now, all of the edges are selected at least in seven partitions
+        #either in the OS or the PFS model, let's keep now only those selected in both
+        #models at least 7 times
+        
+        FinalEdges <-  coeff.summary %>%
+          filter(p_value < 0.05) %>%
+          dplyr::select(Edge, Type) %>%
+          group_by(Edge, Type) %>%
+          summarise(Count = n()) %>%
+          group_by(Edge)  %>% filter(Count >= 8) %>%
+          filter(n_distinct(Type) == 2) %>% # Keep edges relevant in OS and PFS
+          ungroup() %>% pull(Edge) %>% unique %>% as.vector
+        
+        length(FinalEdges)
+        #[1] 10
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% FinalEdges,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 5) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 5)
+          }
+          
+        }
+        
+        CheckFinalEdges <-  coeff.summary %>%
+          filter(p_value < 0.05) %>%
+          dplyr::select(Edge, Type) %>%
+          group_by(Edge, Type) %>%
+          summarise(Count = n()) %>%
+          group_by(Edge)  %>% filter(Count >= 8) %>%
+          filter(n_distinct(Type) == 2) %>% # Keep edges relevant in OS and PFS
+          ungroup() %>% pull(Edge) %>% unique %>% as.vector
+        
+        length(which(FinalEdges %in% CheckFinalEdges)) == length(FinalEdges)
+        #[1] FALSE
+        
+        length(CheckFinalEdges)
+        #[1] 7
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          Cox.PFS.2 <- stepAIC(Cox.PFS.1)
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          Cox.OS.2 <- stepAIC(Cox.OS.1)
+          
+          coeff2.PFS <- as.data.frame(summary(Cox.PFS.2)$coefficient)
+          coeff2.OS <- as.data.frame(summary(Cox.OS.2)$coefficient)
+          
+          coeff2.PFS <- coeff2.PFS[,c(1,5)]
+          colnames(coeff2.PFS) <- c("Coefficient", "p_value")
+          coeff2.PFS <- coeff2.PFS %>% mutate(Edge = rownames(coeff2.PFS),
+                                              RP = i, Type = "PFS")
+          
+          coeff2.OS <- coeff2.OS[,c(1,5)]
+          colnames(coeff2.OS) <- c("Coefficient", "p_value")
+          coeff2.OS <- coeff2.OS %>% mutate(Edge = rownames(coeff2.OS),
+                                            RP = i, Type = "OS")
+          
+          if(i == 1){
+            coeff.summary <- rbind(coeff2.PFS, coeff2.OS)
+          } else {
+            coeff.summary <- rbind(coeff.summary, coeff2.PFS, coeff2.OS)
+          }
+          
+          if(i == 1){
+            aic.summ <- data.frame(AIC1.PFS = AIC(Cox.PFS.1),
+                                   AIC2.PFS = AIC(Cox.PFS.2),
+                                   AIC1.OS = AIC(Cox.OS.1),
+                                   AIC2.OS = AIC(Cox.OS.2),
+                                   Partition = i,
+                                   Step = 6) 
+          } else {
+            aic.summ[nrow(aic.summ)+1, ] <- c(AIC(Cox.PFS.1),AIC(Cox.PFS.2),
+                                              AIC(Cox.OS.1), AIC(Cox.OS.2),
+                                              i, 6)
+          }
+          
+        }
+        
+        CheckFinalEdges2 <-  coeff.summary %>%
+          filter(p_value < 0.05) %>%
+          dplyr::select(Edge, Type) %>%
+          group_by(Edge, Type) %>%
+          summarise(Count = n()) %>%
+          group_by(Edge)  %>% filter(Count >= 8) %>%
+          filter(n_distinct(Type) == 2) %>% # Keep edges relevant in OS and PFS
+          ungroup() %>% pull(Edge) %>% unique %>% as.vector
+        
+        length(which(CheckFinalEdges %in% CheckFinalEdges2)) == length(CheckFinalEdges)
+        #[1] TRUE
+        
+        length(CheckFinalEdges2)
+        #[1] 7
+        
+        saveRDS(CheckFinalEdges2, file.path(ElasticNet_results.dir, "GCHOP_SelectedEdges.RDS"))
+        
+        
+        for(i in 1:10){
+          
+          print(i)
+          
+          Lioness_DLBCL_NCCI <- read.csv(paste0("SSNs/SSN_Selected_GCHOP_UnivariateFilter_TrainSet_", i, ".csv"), row.names = 1)
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[rownames(Lioness_DLBCL_NCCI) %in% CheckFinalEdges2,]
+          Lioness_DLBCL_NCCI <- Lioness_DLBCL_NCCI[,!(colnames(Lioness_DLBCL_NCCI) %in% NormalSamples)]
+          
+          Lioness_DLBCL_NCCI.scale <- as.data.frame(scale(t(Lioness_DLBCL_NCCI)))
+          
+          CoxSurvCI <- Lioness_DLBCL_NCCI.scale %>% mutate(Sample = rownames(Lioness_DLBCL_NCCI.scale))
+          
+          CoxSurvCI <- CoxSurvCI %>% 
+            inner_join(CI.GCHOP %>% 
+                         dplyr::select(Sample, PFS_status, PFS_time, OS_time, OS_status), by = "Sample")
+          
+          Cox.PFS.1 <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                             data = CoxSurvCI %>% dplyr::select(-Sample, -OS_status,-OS_time))
+          
+          Cox.OS.1 <- coxph(Surv(OS_time, OS_status) ~ ., 
+                            data = CoxSurvCI %>% dplyr::select(-Sample, -PFS_status,-PFS_time))
+          
+          print(concordance(Cox.PFS.1)$concordance)
+          print(concordance(Cox.OS.1)$concordance)
+          
+        }
