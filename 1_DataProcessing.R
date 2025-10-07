@@ -12,6 +12,17 @@ dir.create(ClinicalInfo)
 #NOTE: Download the files DLBCL_NCII_clinical_paper.csv and Goya_Clinical_Data.csv 
 # and save into the ClinicalInfo folder before running this script
 
+NullModels.dir <- file.path(home.dir, "NullModels/")
+dir.create(NullModels.dir)
+
+Validation.dir <- file.path(home.dir, "Validation/")
+dir.create(Validation.dir)
+
+FEA.dir <- file.path(home.dir, "FEA/")
+dir.create(FEA.dir)
+#NOTE: Download the files StableCommunities_RCHOP.xlsx and StableCommunities_GCHOP.xlsx 
+# and save into the FEA folder before running this script
+
 #### Libraries ####
 library(SummarizedExperiment)
 library(TCGAbiolinks)
