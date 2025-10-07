@@ -65,7 +65,7 @@ annot <- annot[!duplicated(annot$Ensembl),]
 dim(annot)
 #[1] 41232    10
 
-saveRDS(annot, file.path(Raw.dir, "annot_161224.RDS"))
+saveRDS(annot, file.path(Raw.dir, "annot_Biomart.RDS"))
 #annot <- readRDS("/STORAGE/csbig/anakamura/DLBCL_A4/A12/annot_111124.RDS")
 
 #### Download NCICC files ####
