@@ -8,8 +8,9 @@ Norm.dir <- file.path(home.dir, "NormData/")
 NullModels.dir <- file.path(home.dir, "NullModels/")
 Validation.dir <- file.path(home.dir, "Validation/")
 FEA.dir <- file.path(home.dir, "FEA/")
-#NOTE: Download the files StableCommunities_RCHOP.xlsx and StableCommunities_GCHOP.xlsx 
-# and save into the FEA folder before running this script
+
+Communities.dir <- file.path(home.dir, "Communities/")
+#NOTE: Download the Communities folder into the home.dir
 
 #### Get Stable Edges ####
 library(dplyr)
