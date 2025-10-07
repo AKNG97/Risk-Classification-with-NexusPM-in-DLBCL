@@ -1237,58 +1237,6 @@ future::plan(sequential)
 saveRDS(C.cat, file.path(Validation.dir, "C_cat_OS_GCHOP.RDS"))
 saveRDS(C.risk, file.path(Validation.dir, "C_risk_OS_GCHOP.RDS"))
 
-
-
-#### Similarities of GCNs ####
-
-library(dplyr)
-library(tidyr)
-library(Hmisc)
-library(future.apply)
-
-for(i in 1:10){
-  
-  GCNi <- read.csv(paste0("GCNs/", "GCN_RCHOP_TrainSet_NormTrainSet_", i, ".RDS.csv"))
-  
-  GCNi <- GCNi %>% mutate(Edge = case_when(Sp_corr > 0 ~ paste0("+", ID),
-                                           .default = paste0("-", ID)))
-  
-  GCNi <- GCNi %>% dplyr::select(Edge) %>% mutate(RP = i)
-  
-  if(i == 1){
-    GCNi.summ <- GCNi
-  } else {
-    GCNi.summ <- bind_rows(GCNi.summ, GCNi)
-  }
-  
-}
-
-saveRDS(GCNi.summ, "GCNisumm.RDS")
-
-#### summary of univariate selection for RCHOP ####
-
-library(dplyr)
-library(tidyr)
-
-for(i in 1:10){
-  
-  Summ.i <- readRDS(paste0("SummaryKMs/SummaryKM_RCHOP_RP", i,".RDS"))
-  
-  Summ.i <- Summ.i %>% filter(PFS.KM.pval < 0.05 | Concordance.PFS >= 0.6 |
-                                OS.KM.pval < 0.05 | Concordance.OS >= 0.6)
-  
-  Summ.i <- Summ.i %>% mutate(RP = i)
-  
-  if(i == 1){
-    Summ.R <- Summ.i
-  } else {
-    Summ.R <- rbind(Summ.R, Summ.i)
-  }
-  
-}
-
-saveRDS(Summ.R, "SummR_Univariate.RDS")
-
 #### Get C.index for Train and Test sets (from full data networks) and for IPI and COO ####
 
 #Train C viene del analisis de AIC
@@ -1720,3 +1668,104 @@ for(i in 1:10){
   
 }
 saveRDS(summC.Test, file.path(Validation.dir, "summC_GCHOP_Test_Cats.RDS"))
+
+#### RCHOP Cross-cohort evaluation ####
+
+library(tidyr)
+library(dplyr)
+library(survival)
+
+CI.FULL <- readRDS(file.path(ClinicalInfo, "CompleteCI_5yrCensored.RDS"))
+
+SSN.RCHOP <- read.csv("SSNs/SSN_RCHOP_AllSamples.csv", row.names = 1)
+
+SSN.RCHOP <- as.data.frame(scale(t(SSN.RCHOP)))
+
+SSN.RCHOP.GEO <- SSN.RCHOP[CI.FULL %>% filter(Source == "GEO",
+                                                Treatment == "Rituximab") %>% pull(Sample), ]
+SSN.RCHOP.GDC <- SSN.RCHOP[CI.FULL %>% filter(Source == "TCGA") %>% pull(Sample), ]
+
+SSN.RCHOP.GEO <- SSN.RCHOP.GEO %>% mutate(Sample = rownames(SSN.RCHOP.GEO))
+SSN.RCHOP.GDC <- SSN.RCHOP.GDC %>% mutate(Sample = rownames(SSN.RCHOP.GDC))
+
+SSN.RCHOP.GEO.OS <- SSN.RCHOP.GEO %>% inner_join(CI.FULL %>% dplyr::select(Sample, OS_time, OS_status),
+                                               by = "Sample")
+SSN.RCHOP.GDC.OS <- SSN.RCHOP.GDC %>% inner_join(CI.FULL %>% dplyr::select(Sample, OS_time, OS_status),
+                                                 by = "Sample")
+
+SSN.RCHOP.GEO.PFS <- SSN.RCHOP.GEO %>% inner_join(CI.FULL %>% dplyr::select(Sample, PFS_time, PFS_status),
+                                                 by = "Sample")
+SSN.RCHOP.GDC.PFS <- SSN.RCHOP.GDC %>% inner_join(CI.FULL %>% dplyr::select(Sample, PFS_time, PFS_status),
+                                                 by = "Sample")
+
+#Train GDC in OS
+Cox.RCHOP.GDC.OS.Train <- coxph(Surv(OS_time, OS_status) ~ ., 
+                      data = SSN.RCHOP.GDC.OS %>% dplyr::select(-Sample))
+
+C.Train.OS.GDC <- summary(Cox.RCHOP.GDC.OS.Train)$concordance[1]
+
+SSN.RCHOP.GEO.OS$RiskScore <- predict(Cox.RCHOP.GDC.OS.Train, 
+                                        newdata = SSN.RCHOP.GEO.OS %>% dplyr::select(-Sample),
+                                        type = "risk")
+Cox.RCHOP.GEO.OS.Test <- coxph(Surv(OS_time, OS_status) ~ RiskScore, 
+                          data = SSN.RCHOP.GEO.OS %>% dplyr::select(-Sample))
+
+C.Test.OS.GEO <- summary(Cox.RCHOP.GEO.OS.Test)$concordance[1]
+
+SSN.RCHOP.GEO.OS <- SSN.RCHOP.GEO.OS %>% dplyr::select(-RiskScore)
+
+#Train GEO in OS
+Cox.RCHOP.GEO.OS.Train <- coxph(Surv(OS_time, OS_status) ~ ., 
+                                data = SSN.RCHOP.GEO.OS %>% dplyr::select(-Sample))
+
+C.Train.OS.GEO <- summary(Cox.RCHOP.GEO.OS.Train)$concordance[1]
+
+SSN.RCHOP.GDC.OS$RiskScore <- predict(Cox.RCHOP.GEO.OS.Train,
+                                      newdata = SSN.RCHOP.GDC.OS %>% dplyr::select(-Sample),
+                                      type = "risk")
+Cox.RCHOP.GDC.OS.Test <- coxph(Surv(OS_time, OS_status) ~ RiskScore, 
+                               data = SSN.RCHOP.GDC.OS %>% dplyr::select(-Sample))
+C.Test.OS.GDC <- summary(Cox.RCHOP.GDC.OS.Test)$concordance[1]
+SSN.RCHOP.GDC.OS <- SSN.RCHOP.GDC.OS %>%  dplyr::select(-RiskScore)
+
+#Train GDC in PFS
+Cox.RCHOP.GDC.PFS.Train <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                                data = SSN.RCHOP.GDC.PFS %>% dplyr::select(-Sample))
+
+C.Train.PFS.GDC <- summary(Cox.RCHOP.GDC.PFS.Train)$concordance[1]
+
+SSN.RCHOP.GEO.PFS$RiskScore <- predict(Cox.RCHOP.GDC.PFS.Train, 
+                                      newdata = SSN.RCHOP.GEO.PFS %>% dplyr::select(-Sample),
+                                      type = "risk")
+Cox.RCHOP.GEO.PFS.Test <- coxph(Surv(PFS_time, PFS_status) ~ RiskScore, 
+                               data = SSN.RCHOP.GEO.PFS %>% dplyr::select(-Sample))
+
+C.Test.PFS.GEO <- summary(Cox.RCHOP.GEO.PFS.Test)$concordance[1]
+
+SSN.RCHOP.GEO.PFS <- SSN.RCHOP.GEO.PFS %>%  dplyr::select(-RiskScore)
+
+#Train GEO in PFS
+Cox.RCHOP.GEO.PFS.Train <- coxph(Surv(PFS_time, PFS_status) ~ ., 
+                                data = SSN.RCHOP.GEO.PFS %>% dplyr::select(-Sample))
+
+C.Train.PFS.GEO <- summary(Cox.RCHOP.GEO.PFS.Train)$concordance[1]
+
+SSN.RCHOP.GDC.PFS$RiskScore <- predict(Cox.RCHOP.GEO.PFS.Train,
+                                      newdata = SSN.RCHOP.GDC.PFS %>% dplyr::select(-Sample),
+                                      type = "risk")
+Cox.RCHOP.GDC.PFS.Test <- coxph(Surv(PFS_time, PFS_status) ~ RiskScore, 
+                               data = SSN.RCHOP.GDC.PFS %>% dplyr::select(-Sample))
+C.Test.PFS.GDC <- summary(Cox.RCHOP.GDC.PFS.Test)$concordance[1]
+SSN.RCHOP.GDC.PFS <- SSN.RCHOP.GDC.PFS %>%  dplyr::select(-RiskScore)
+
+CrossValidation <- data.frame(C = c(C.Train.PFS.GDC, C.Test.PFS.GEO, C.Train.PFS.GEO, C.Test.PFS.GDC, 
+                                    C.Train.OS.GDC, C.Test.OS.GEO, C.Train.OS.GEO, C.Test.OS.GDC),
+                              EndPoint = c("PFS", "PFS", "PFS", "PFS",
+                                           "OS", "OS", "OS", "OS"),
+                              Type = c("Train", "Test", "Train", "Test",
+                                       "Train", "Test", "Train", "Test"),
+                              DataSet = c("TCGA", "GEO", "GEO", "TCGA",
+                                          "TCGA", "GEO", "GEO", "TCGA"))
+
+write.csv(CrossValidation, file.path(Validation.dir, "RCHOP_CrossCohortEvaluation.csv"), quote = F, row.names = F)
+
