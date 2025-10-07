@@ -6,11 +6,13 @@ setwd(home.dir)
 Raw.dir <- file.path(home.dir, "RawData/")
 dir.create(Raw.dir)
 #NOTE: Download Human.GRCh38.p13.annot.tsv into the Raw.dir folder 
+#Instruction to download the file can be found on the README file of the repository
 
 ClinicalInfo <- file.path(home.dir, "ClinicalInfo/")
 dir.create(ClinicalInfo)
-#NOTE: Download the files DLBCL_NCII_clinical_paper.csv and Goya_Clinical_Data.csv 
-# and save into the ClinicalInfo folder before running this script
+#NOTE: Download the clinical files as described on the README file of the repository
+#Save the file from the GDC as DLBCL_NCII_clinical_paper.csv and the file from GEO as Goya_Clinical_Data.csv 
+#Yu need them on the ClinicalInfo folder before running this script
 
 NullModels.dir <- file.path(home.dir, "NullModels/")
 dir.create(NullModels.dir)
@@ -20,8 +22,6 @@ dir.create(Validation.dir)
 
 FEA.dir <- file.path(home.dir, "FEA/")
 dir.create(FEA.dir)
-#NOTE: Download the files StableCommunities_RCHOP.xlsx and StableCommunities_GCHOP.xlsx 
-# and save into the FEA folder before running this script
 
 #### Libraries ####
 library(SummarizedExperiment)
